@@ -1,0 +1,140 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div class="text-center" id="viewmodelContainer">
+   
+
+    <input type="file" multiple id="archivos"/>
+
+
+    <div data-bind="foreach: $root.Archivos">
+        <div class="row">
+            <div class="col-6">
+                Nombre:
+                <input class="form-control" data-bind="value: Nombre" />
+            </div>
+            <div class="col-6">
+                Tipo archivo: 
+                <input class="form-control" data-bind="value: TipoArchivo" />
+            </div>
+        </div>
+    </div>
+
+    <button class="btn btn-success" data-bind="click: $root.GuardarArchivos, visible: $root.Archivos().length > 0">Guardar</button>
+</div>
+
+
+<script>
+    $(function () {
+        // creo dos variables porque si la persona adjunta varias veces, necesito 
+        // tener todos los que adjunto. O sea, si adjunta 2, y después adjunta 2 más, 
+        // necesito tener los 4
+        var todosLosArchivos = [];
+        var archivosSeleccionados;
+
+        function ArchivoViewModel() {
+            var self = this;
+
+            self.Archivos = ko.observableArray([]);
+
+            self.AgregarArchivo = function () {
+                var nombresArchivos = [];
+                // recorro archivos seleccionados para buscar el nombre de cada uno
+                for (var i = 0; i < archivosSeleccionados.length; i++) {
+                    nombresArchivos.push(archivosSeleccionados[i].name);
+                    // agrego a la lista de todos los archivo
+                    todosLosArchivos.push(archivosSeleccionados[i]);
+                }
+
+                // proceso los nombres de los archivos
+                $.ajax({
+                    data: JSON.stringify({
+                        "NombresArchivos": nombresArchivos
+                    }),
+                    contentType: "application/json",
+                    method: "POST",
+                    url: "Home/ProcesarNombresArchivos",
+                    success: function (archivosProcesados) {
+                        // guardo en mi observable de archivos
+                        archivosProcesados.forEach(function (archivo) {
+                            self.Archivos.push({
+                                Nombre: ko.observable(archivo.nombre),
+                                TipoArchivo: ko.observable(archivo.tipoArchivo)
+                            });
+                        });
+                    }
+                });
+            };
+
+            self.GuardarArchivos = function () {
+
+                // uso FormData porque necesito enviar el archivo entero
+                var formData = new FormData();
+
+                for (var i = 0; i != todosLosArchivos.length; i++) {
+                    formData.append("archivos", todosLosArchivos[i]);
+                }
+
+                // mando primero a guardar los archivos fisicamente, o sea en el disco
+                // esta request es la más compleja
+                $.ajax({
+                    url: "Home/GuardarArchivos",
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    type: "POST",
+                    success: function (responseGuardarArchivo) {
+                        // si los archivos se guardaron bien
+                        if (responseGuardarArchivo) {
+                            // levanto información de cada archivo, por si el usuario modifico algo
+                            // para evitar esto existe una función que se llama ko.toJS, después
+                            // cuando vuelva la vemos así este código queda más limpio
+                            // pero me pareción más entendible hacerlo así ahora
+                            var archivos = [];
+                            for (var i = 0; i < self.Archivos().length; i++) {
+                                archivos.push({
+                                    "Nombre": self.Archivos()[i].Nombre(),
+                                    "TipoArchivo": self.Archivos()[i].TipoArchivo()
+                                })
+                            }
+
+                            // guardo la info de cada archivo, con una llamada AJAX clasica, enviando un JSON
+                            $.ajax({
+                                url: "Home/GuardarInformacionArchivos",
+                                data: JSON.stringify(
+                                    {
+                                        Archivos: archivos
+                                    }),
+                                contentType: "application/json",
+                                method: "POST",
+                                success: function (responseGuardarInfoArchivos) {
+                                    if (responseGuardarInfoArchivos) {
+                                        alert("Archivos guardados ok");
+                                    } else {
+                                        alert("Hubo un error");
+                                    }
+                                }
+
+                            });
+
+                        }
+                    }
+                });
+            }
+        }
+
+        // creo VM y asocio
+        var vm = new ArchivoViewModel();
+        ko.applyBindings(vm, $("#viewmodelContainer").get(0));
+
+        // evento onChange del input file
+        var fileUpload = document.getElementById("archivos");
+        // display file name if file has been selected
+        fileUpload.onchange = function () {
+            archivosSeleccionados = this.files;
+            vm.AgregarArchivo();
+        };
+
+    });
+</script>
